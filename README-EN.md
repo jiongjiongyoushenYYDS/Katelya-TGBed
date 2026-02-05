@@ -23,18 +23,18 @@
 <table>
   <tr>
     <td width="50%">
-      <img src="demo/登录页面.webp" alt="登录页面" style="width:100%">
+      <img src="demo/首页上传.webp" alt="Home Upload" style="width:100%">
     </td>
     <td width="50%">
-      <img src="demo/首页上传.webp" alt="首页上传" style="width:100%">
+      <img src="demo/视频预览.webp" alt="Video Preview" style="width:100%">
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="demo/后台面板.webp" alt="后台面板" style="width:100%">
+      <img src="demo/后台面板.webp" alt="Admin Dashboard" style="width:100%">
     </td>
     <td width="50%">
-      <img src="demo/视频预览.webp" alt="视频预览" style="width:100%">
+      <img src="demo/登录页面.webp" alt="Login Page" style="width:100%">
     </td>
   </tr>
 </table>
