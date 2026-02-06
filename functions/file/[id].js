@@ -485,6 +485,29 @@ async function getFilePath(env, file_id) {
 }
 
 // R2 文件处理函数 - 支持 Range 请求
+async function getR2RecordFromKV(env, r2Key) {
+    if (!env.img_url) {
+        return null;
+    }
+
+    const candidateKeys = [];
+    if (r2Key.startsWith('r2:')) {
+        candidateKeys.push(r2Key);
+    } else {
+        candidateKeys.push(`r2:${r2Key}`);
+    }
+    candidateKeys.push(r2Key);
+
+    for (const key of [...new Set(candidateKeys)]) {
+        const record = await env.img_url.getWithMetadata(key);
+        if (record && record.metadata) {
+            return record;
+        }
+    }
+
+    return null;
+}
+
 async function handleR2File(context, r2Key, record = null) {
     const { request, env, params } = context;
     const url = new URL(request.url);
@@ -500,8 +523,14 @@ async function handleR2File(context, r2Key, record = null) {
     
     try {
         // 如果没有 record，尝试从 KV 获取
-        if (!record && env.img_url) {
-            record = await env.img_url.getWithMetadata(`r2:${r2Key}`);
+        if (!record || !record.metadata) {
+            record = await getR2RecordFromKV(env, r2Key);
+        }
+        if (!record || !record.metadata) {
+            const headers = new Headers();
+            addCorsHeaders(headers);
+            headers.set('Cache-Control', 'no-store, max-age=0');
+            return new Response('File not found', { status: 404, headers });
         }
         
         // 检查访问控制

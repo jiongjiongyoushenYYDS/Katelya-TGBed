@@ -1,149 +1,135 @@
 export async function onRequest(context) {
-    const { env, params } = context;
-    let fileId = params.id;
-    try {
-      fileId = decodeURIComponent(fileId);
-    } catch (e) {
-      console.warn('Failed to decode fileId, using raw value:', fileId);
+  const { env, params } = context;
+  let fileId = params.id;
+
+  try {
+    fileId = decodeURIComponent(fileId);
+  } catch (error) {
+    console.warn('Failed to decode fileId, using raw value:', fileId);
+  }
+
+  console.log('Deleting file:', fileId);
+
+  try {
+    if (!env.img_url) {
+      throw new Error('KV binding img_url is not configured.');
     }
-    console.log('Deleting file:', fileId);
-    
+
+    const { record, kvKey } = await getRecordWithKey(env, fileId);
+    if (!record || !record.metadata) {
+      return jsonResponse(
+        {
+          success: false,
+          error: 'File metadata not found.'
+        },
+        404
+      );
+    }
+
+    const metadata = record.metadata;
+    const isR2 = fileId.startsWith('r2:') || metadata.storageType === 'r2' || metadata.storage === 'r2';
+
+    if (isR2) {
+      const r2Key = metadata.r2Key
+        || (kvKey?.startsWith('r2:') ? kvKey.slice(3) : null)
+        || (fileId.startsWith('r2:') ? fileId.slice(3) : fileId);
+
+      if (!env.R2_BUCKET) {
+        throw new Error('R2 bucket is not configured.');
+      }
+      if (!r2Key) {
+        throw new Error('Failed to resolve R2 key.');
+      }
+
+      await env.R2_BUCKET.delete(r2Key);
+      await env.img_url.delete(kvKey);
+      console.log('Deleted R2 object and KV metadata:', { r2Key, kvKey });
+
+      return jsonResponse({
+        success: true,
+        message: 'Deleted from R2 and KV.',
+        fileId,
+        r2Key,
+        kvKey
+      });
+    }
+
+    // Telegram path:
+    // 1) try to delete Telegram message (best effort)
+    // 2) always delete KV metadata in finally
+    let telegramDeleted = false;
+    let telegramDeleteAttempted = false;
+    let telegramDeleteError = null;
+
     try {
-      // 优先读取 KV 元数据，判断存储类型与 Telegram 信息
-      let record = null;
-      let actualKVKey = null; // 🔥 记录实际找到的完整Key（包含前缀）
-      
-      if (env.img_url) {
-        const prefixes = ['img:', 'vid:', 'aud:', 'doc:', 'r2:', ''];
-        const hasKnownPrefix = prefixes.some(prefix => prefix && fileId.startsWith(prefix));
-        const candidateKeys = hasKnownPrefix ? [fileId] : prefixes.map(prefix => `${prefix}${fileId}`);
-
-        for (const key of candidateKeys) {
-          record = await env.img_url.getWithMetadata(key);
-          if (record && record.metadata) {
-            actualKVKey = key; // 🔥 保存找到的实际Key
-            console.log('Found KV record with key:', actualKVKey);
-            break;
-          }
-        }
-      }
-
-      if (!record || !record.metadata) {
-        throw new Error('文件元数据不存在，无法删除');
-      }
-
-      const metadata = record.metadata;
-      const isR2 = fileId.startsWith('r2:') || metadata.storageType === 'r2' || metadata.storage === 'r2';
-
-      // R2 文件：先删对象，再删 KV
-      if (isR2) {
-        const r2Key = metadata.r2Key
-          || (actualKVKey?.startsWith('r2:') ? actualKVKey.slice(3) : null)
-          || (fileId.startsWith('r2:') ? fileId.slice(3) : fileId);
-        console.log('Deleting R2 object:', r2Key);
-        
-        if (!env.R2_BUCKET) {
-          throw new Error('R2 未配置，无法删除对象');
-        }
-        
-        if (!r2Key) {
-          throw new Error('R2 Key 解析失败，无法删除对象');
-        }
-
-        // 🔥 先删除R2对象，等待确认
-        await env.R2_BUCKET.delete(r2Key);
-        console.log('R2 object deleted successfully');
-        
-        // 🔥 然后删除KV元数据（使用正确的Key）
-        if (env.img_url) {
-          if (actualKVKey) {
-            await env.img_url.delete(actualKVKey);
-            console.log('KV metadata deleted:', actualKVKey);
-          } else {
-            await env.img_url.delete(fileId);
-            console.log('KV metadata deleted by raw key:', fileId);
-          }
-        }
-
-        return new Response(JSON.stringify({ 
-          success: true, 
-          message: '已从 R2 与 KV 彻底删除',
-          fileId,
-          r2Key,
-          kvKey: actualKVKey
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
-      // Telegram 文件：尝试删除消息（需要 metadata.telegramMessageId）
-      let telegramDeleted = false;
-      
       if (metadata.telegramMessageId) {
+        telegramDeleteAttempted = true;
         console.log('Attempting to delete Telegram message:', metadata.telegramMessageId);
         telegramDeleted = await deleteTelegramMessage(metadata.telegramMessageId, env);
-        
-        if (telegramDeleted) {
-          console.log('Telegram message deleted successfully');
-        } else {
-          console.error('Telegram message deletion failed');
+
+        if (!telegramDeleted) {
+          console.error('Telegram message deletion failed:', metadata.telegramMessageId);
         }
       } else {
-        console.warn('No telegramMessageId found in metadata');
+        console.warn('No telegramMessageId found in metadata:', kvKey);
       }
-
-      // 🔥 严格模式：如果有messageId但删除失败，则报错阻止伪删除
-      if (metadata.telegramMessageId && !telegramDeleted) {
-        throw new Error('Telegram 消息删除失败，已阻止伪删除操作');
-      }
-
-      // 🔥 如果没有messageId，仍然删除KV元数据（让文件无法访问）
-      // 但会在响应中标注警告
-      if (env.img_url) {
-        if (actualKVKey) {
-          await env.img_url.delete(actualKVKey);
-          console.log('KV metadata deleted:', actualKVKey);
-        } else {
-          await env.img_url.delete(fileId);
-          console.log('KV metadata deleted by raw key:', fileId);
-        }
-      }
-
-      const warningMessage = !metadata.telegramMessageId 
-        ? '警告：无 messageId，仅删除元数据，Telegram 原文件可能仍存在' 
-        : '';
-
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: telegramDeleted 
-          ? '已从 Telegram 与 KV 彻底删除' 
-          : '已删除 KV 元数据，文件已无法访问',
-        fileId,
-        kvKey: actualKVKey,
-        telegramDeleted,
-        warning: warningMessage
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
     } catch (error) {
-      console.error('Delete error:', error);
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: error.message 
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      telegramDeleteError = error;
+      console.error('Telegram deleteMessage threw:', error);
+      // Do not throw. KV deletion must still run.
+    } finally {
+      await env.img_url.delete(kvKey);
+      console.log('KV metadata deleted:', kvKey);
+    }
+
+    return jsonResponse({
+      success: true,
+      message: telegramDeleted
+        ? 'Deleted from Telegram and KV.'
+        : 'KV metadata deleted (Telegram deletion best-effort).',
+      fileId,
+      kvKey,
+      telegramDeleteAttempted,
+      telegramDeleted,
+      warning: telegramDeleted
+        ? ''
+        : 'Telegram deletion failed or messageId missing, but KV metadata was forcibly deleted.',
+      telegramDeleteError: telegramDeleteError ? telegramDeleteError.message : null
+    });
+  } catch (error) {
+    console.error('Delete error:', error);
+    return jsonResponse(
+      {
+        success: false,
+        error: error.message
+      },
+      500
+    );
+  }
+}
+
+async function getRecordWithKey(env, fileId) {
+  const prefixes = ['img:', 'vid:', 'aud:', 'doc:', 'r2:', ''];
+  const hasKnownPrefix = prefixes.some((prefix) => prefix && fileId.startsWith(prefix));
+  const candidateKeys = hasKnownPrefix ? [fileId] : prefixes.map((prefix) => `${prefix}${fileId}`);
+
+  for (const key of candidateKeys) {
+    const record = await env.img_url.getWithMetadata(key);
+    if (record && record.metadata) {
+      return { record, kvKey: key };
     }
   }
 
+  return { record: null, kvKey: fileId };
+}
+
 async function deleteTelegramMessage(messageId, env) {
-  if (!env.TG_Bot_Token || !env.TG_Chat_ID) return false;
+  if (!messageId || !env.TG_Bot_Token || !env.TG_Chat_ID) {
+    return false;
+  }
+
   try {
-    const resp = await fetch(`https://api.telegram.org/bot${env.TG_Bot_Token}/deleteMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${env.TG_Bot_Token}/deleteMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -151,10 +137,24 @@ async function deleteTelegramMessage(messageId, env) {
         message_id: messageId
       })
     });
-    const data = await resp.json();
-    return resp.ok && data.ok;
+
+    let data = { ok: false };
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      console.error('Failed to parse Telegram deleteMessage response:', jsonError);
+    }
+
+    return response.ok && data.ok;
   } catch (error) {
     console.error('Telegram delete message error:', error);
     return false;
   }
+}
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
 }
