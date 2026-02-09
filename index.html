@@ -1350,19 +1350,19 @@
               <i class="fab fa-telegram"></i>
               <span>Telegram</span>
             </button>
-            <button class="storage-btn" :class="{ active: storageMode === 'r2', disabled: !r2Available }" @click="setStorageMode('r2')" :disabled="!r2Available">
+            <button class="storage-btn" v-if="!isGuest" :class="{ active: storageMode === 'r2', disabled: !r2Available }" @click="setStorageMode('r2')" :disabled="!r2Available" :title="!r2Available ? '未配置 - 请在环境变量中配置 R2 存储桶' : 'Cloudflare R2 存储'">
               <i class="fas fa-cloud"></i>
               <span>R2 存储</span>
             </button>
-            <button class="storage-btn" v-show="s3Available && !isGuest" :class="{ active: storageMode === 's3', disabled: !s3Available }" @click="setStorageMode('s3')" :disabled="!s3Available">
+            <button class="storage-btn" v-if="!isGuest" :class="{ active: storageMode === 's3', disabled: !s3Available }" @click="setStorageMode('s3')" :disabled="!s3Available" :title="!s3Available ? '未配置 - 请在环境变量中配置 S3 相关参数' : 'S3 兼容存储'">
               <i class="fas fa-database"></i>
               <span>S3 API</span>
             </button>
-            <button class="storage-btn" v-show="discordAvailable && !isGuest" :class="{ active: storageMode === 'discord', disabled: !discordAvailable }" @click="setStorageMode('discord')" :disabled="!discordAvailable">
+            <button class="storage-btn" v-if="!isGuest" :class="{ active: storageMode === 'discord', disabled: !discordAvailable }" @click="setStorageMode('discord')" :disabled="!discordAvailable" :title="!discordAvailable ? '未配置 - 请在环境变量中配置 Discord 相关参数' : 'Discord 存储'">
               <i class="fab fa-discord"></i>
               <span>Discord</span>
             </button>
-            <button class="storage-btn" v-show="huggingfaceAvailable && !isGuest" :class="{ active: storageMode === 'huggingface', disabled: !huggingfaceAvailable }" @click="setStorageMode('huggingface')" :disabled="!huggingfaceAvailable">
+            <button class="storage-btn" v-if="!isGuest" :class="{ active: storageMode === 'huggingface', disabled: !huggingfaceAvailable }" @click="setStorageMode('huggingface')" :disabled="!huggingfaceAvailable" :title="!huggingfaceAvailable ? '未配置 - 请在环境变量中配置 HuggingFace 相关参数' : 'HuggingFace 存储'">
               <i class="fas fa-robot"></i>
               <span>HuggingFace</span>
             </button>

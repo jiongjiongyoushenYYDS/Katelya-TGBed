@@ -127,6 +127,9 @@
                 <el-dropdown-item command="all" :class="{ 'el-dropdown-menu__item--selected': storageFilter === 'all' }"><i class="fas fa-database"></i> 全部存储</el-dropdown-item>
                 <el-dropdown-item command="telegram" :class="{ 'el-dropdown-menu__item--selected': storageFilter === 'telegram' }"><i class="fab fa-telegram"></i> Telegram</el-dropdown-item>
                 <el-dropdown-item command="r2" :class="{ 'el-dropdown-menu__item--selected': storageFilter === 'r2' }"><i class="fas fa-cloud"></i> R2 存储</el-dropdown-item>
+                <el-dropdown-item command="s3" :class="{ 'el-dropdown-menu__item--selected': storageFilter === 's3' }"><i class="fas fa-database"></i> S3 存储</el-dropdown-item>
+                <el-dropdown-item command="discord" :class="{ 'el-dropdown-menu__item--selected': storageFilter === 'discord' }"><i class="fab fa-discord"></i> Discord</el-dropdown-item>
+                <el-dropdown-item command="huggingface" :class="{ 'el-dropdown-menu__item--selected': storageFilter === 'huggingface' }"><i class="fas fa-robot"></i> HuggingFace</el-dropdown-item>
               </el-dropdown-menu>
             </el-dropdown>
             <el-dropdown @command="sort" :hide-on-click="false">
@@ -194,6 +197,18 @@
               <div class="status-item">
                 <i class="fas fa-circle" :style="{ color: systemStatus.r2.connected ? '#67c23a' : (systemStatus.r2.message === '未配置' ? '#909399' : '#f56c6c') }"></i>
                 <span>R2</span>
+              </div>
+              <div class="status-item">
+                <i class="fas fa-circle" :style="{ color: systemStatus.s3.connected ? '#67c23a' : (systemStatus.s3.message === '未配置' ? '#909399' : '#f56c6c') }"></i>
+                <span>S3</span>
+              </div>
+              <div class="status-item">
+                <i class="fas fa-circle" :style="{ color: systemStatus.discord.connected ? '#67c23a' : (systemStatus.discord.message === '未配置' ? '#909399' : '#f56c6c') }"></i>
+                <span>DC</span>
+              </div>
+              <div class="status-item">
+                <i class="fas fa-circle" :style="{ color: systemStatus.huggingface.connected ? '#67c23a' : (systemStatus.huggingface.message === '未配置' ? '#909399' : '#f56c6c') }"></i>
+                <span>HF</span>
               </div>
             </div>
             <el-dropdown @command="handleLoadSettings" :hide-on-click="false">
@@ -490,6 +505,9 @@
         telegram: { connected: false, message: '检查中...' },
         kv: { connected: false, message: '检查中...' },
         r2: { connected: false, message: '检查中...', enabled: false },
+        s3: { connected: false, message: '检查中...', enabled: false },
+        discord: { connected: false, message: '检查中...', enabled: false },
+        huggingface: { connected: false, message: '检查中...', enabled: false },
         auth: { enabled: false, message: '检查中...' }
       },
       batchToolbarPosition: {
@@ -548,10 +566,12 @@
           }
 
           // 存储类型匹配
-          const isR2 = data.name.startsWith('r2:');
-          const matchesStorage = this.storageFilter === 'all' || 
-            (this.storageFilter === 'r2' && isR2) || 
-            (this.storageFilter === 'telegram' && !isR2);
+          const storagePrefix = data.name.startsWith('r2:') ? 'r2'
+            : data.name.startsWith('s3:') ? 's3'
+            : data.name.startsWith('discord:') ? 'discord'
+            : data.name.startsWith('hf:') ? 'huggingface'
+            : 'telegram';
+          const matchesStorage = this.storageFilter === 'all' || this.storageFilter === storagePrefix;
 
           return matchesSearch && matchesFilter && matchesType && matchesStorage;
         });
@@ -584,7 +604,10 @@
       storageFilterIcon() {
         return this.storageFilter === 'all' ? 'fas fa-database' :
         this.storageFilter === 'telegram' ? 'fab fa-telegram' :
-        this.storageFilter === 'r2' ? 'fas fa-cloud' : 'fas fa-database';
+        this.storageFilter === 'r2' ? 'fas fa-cloud' :
+        this.storageFilter === 's3' ? 'fas fa-database' :
+        this.storageFilter === 'discord' ? 'fab fa-discord' :
+        this.storageFilter === 'huggingface' ? 'fas fa-robot' : 'fas fa-database';
       },
       batchToolbarStyle() {
         if (this.batchToolbarPosition.left === null || this.batchToolbarPosition.top === null) {
@@ -1323,9 +1346,24 @@
                   ${status.kv.connected ? '✓' : '✗'} ${status.kv.message}
                 </span>
               </p>
-              <p><i class="fas fa-cloud" style="width: 20px;"></i> <b>R2 存储:</b> 
+              <p><i class="fas fa-cloud" style="width: 20px;"></i> <b>R2 存储:</b>
                 <span style="color: ${status.r2.connected ? '#67c23a' : (status.r2.message === '未配置' ? '#909399' : '#f56c6c')}">
                   ${status.r2.connected ? '✓' : (status.r2.message === '未配置' ? '○' : '✗')} ${status.r2.message}
+                </span>
+              </p>
+              <p><i class="fas fa-database" style="width: 20px; color: #e6a23c;"></i> <b>S3 存储:</b>
+                <span style="color: ${status.s3?.connected ? '#67c23a' : (status.s3?.message === '未配置' ? '#909399' : '#f56c6c')}">
+                  ${status.s3?.connected ? '✓' : (status.s3?.message === '未配置' ? '○' : '✗')} ${status.s3?.message || '未知'}
+                </span>
+              </p>
+              <p><i class="fab fa-discord" style="width: 20px; color: #7289da;"></i> <b>Discord:</b>
+                <span style="color: ${status.discord?.connected ? '#67c23a' : (status.discord?.message === '未配置' ? '#909399' : '#f56c6c')}">
+                  ${status.discord?.connected ? '✓' : (status.discord?.message === '未配置' ? '○' : '✗')} ${status.discord?.message || '未知'}
+                </span>
+              </p>
+              <p><i class="fas fa-robot" style="width: 20px; color: #ff9d00;"></i> <b>HuggingFace:</b>
+                <span style="color: ${status.huggingface?.connected ? '#67c23a' : (status.huggingface?.message === '未配置' ? '#909399' : '#f56c6c')}">
+                  ${status.huggingface?.connected ? '✓' : (status.huggingface?.message === '未配置' ? '○' : '✗')} ${status.huggingface?.message || '未知'}
                 </span>
               </p>
               <p><i class="fas fa-lock" style="width: 20px;"></i> <b>身份验证:</b> 
